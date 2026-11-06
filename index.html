@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real React Runtime Simulator (No Globals)</title>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 2rem;
+      background-color: #f4f4f9;
+    }
+
+    .card {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      max-width: 400px;
+    }
+
+    button {
+      padding: 0.5rem 1rem;
+      margin-right: 0.5rem;
+      margin-bottom: 0.5rem;
+      border: none;
+      background: #0066ff;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #0052cc;
+    }
+
+    .console-log {
+      margin-top: 1rem;
+      background: #1e1e1e;
+      color: #00ff66;
+      padding: 1rem;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="root"></div>
+
+  <script>
+    const ReactMini = (function () {
+      let hooks = [];     // State storage array
+      let cursor = 0;     // Hook index tracker
+      let activeComponent = null;
+      let rootContainer = null;
+
+      function useState(initialValue) {
+        const currentCursor = cursor;
+
+        // Initialize state on first render
+        if (hooks[currentCursor] === undefined) {
+          hooks[currentCursor] = initialValue;
+        }
+
+        const setState = (newValue) => {
+          // Update internal memory
+          hooks[currentCursor] = typeof newValue === 'function'
+            ? newValue(hooks[currentCursor])
+            : newValue;
+
+          // Re-trigger render
+          render();
+        };
+
+        cursor++;
+        return [hooks[currentCursor], setState];
+      }
+
+      // This mimics React.createElement (what JSX compiles into)
+      function createElement(tag, props, ...children) {
+        const element = document.createElement(tag);
+
+        if (props) {
+          for (const [key, value] of Object.entries(props)) {
+            // If prop starts with 'on' (e.g. onClick), attach as an event listener
+            if (key.startsWith('on') && typeof value === 'function') {
+              const eventName = key.toLowerCase().slice(2); // 'onClick' -> 'click'
+              element.addEventListener(eventName, value);
+            } else if (key === 'className') {
+              element.className = value;
+            } else if (key === 'style' && typeof value === 'string') {
+              element.style.cssText = value;
+            } else {
+              element.setAttribute(key, value);
+            }
+          }
+        }
+
+        // Append children (text or other DOM elements)
+        children.flat().forEach(child => {
+          if (typeof child === 'string' || typeof child === 'number') {
+            element.appendChild(document.createTextNode(child));
+          } else if (child instanceof Node) {
+            element.appendChild(child);
+          }
+        });
+
+        return element;
+      }
+
+      function render() {
+        if (!activeComponent || !rootContainer) return;
+
+        cursor = 0; // Reset hook index before component runs
+
+        // Clear root and append newly generated DOM tree
+        rootContainer.innerHTML = '';
+        const freshDomTree = activeComponent();
+        rootContainer.appendChild(freshDomTree);
+
+        console.log("React Internal Hooks Memory:", [...hooks]);
+      }
+
+      function mount(Component, container) {
+        activeComponent = Component;
+        rootContainer = container;
+        render();
+      }
+
+      return { useState, createElement, mount };
+    })();
+
+    // -------------------------------------------------------------
+    // 2. YOUR COMPONENT (Written like real React, using closures)
+    // -------------------------------------------------------------
+    function CounterApp() {
+      const [count, setCount] = ReactMini.useState(0);
+      const [step, setStep] = ReactMini.useState(1);
+
+      const handleIncrement = () => setCount(prev => prev + step);
+      const handleDecrement = () => setCount(prev => prev - step);
+      const handleSetStep = (newStep) => setStep(newStep);
+
+      return ReactMini.createElement('div', { className: 'card' },
+        ReactMini.createElement('h2', null, `Count: ${count}`),
+        ReactMini.createElement('p', null, 'Current Step Increment: ',
+          ReactMini.createElement('strong', null, step)
+        ),
+
+        ReactMini.createElement('button', { onClick: handleIncrement }, '+ Increment'),
+        ReactMini.createElement('button', { onClick: handleDecrement }, '- Decrement'),
+
+        ReactMini.createElement('hr', { style: 'margin: 1.5rem 0; border: none; border-top: 1px solid #eee;' }),
+
+        ReactMini.createElement('p', null, 'Change Step Size:'),
+        ReactMini.createElement('button', { onClick: () => handleSetStep(1) }, 'Step = 1'),
+        ReactMini.createElement('button', { onClick: () => handleSetStep(5) }, 'Step = 5'),
+
+        ReactMini.createElement('div', { className: 'console-log' },
+          'Open F12 Console to see hooks update without global functions!'
+        )
+      );
+    }
+
+    // -------------------------------------------------------------
+    // 3. MOUNT THE APP
+    // -------------------------------------------------------------
+    ReactMini.mount(CounterApp, document.getElementById('root'));
+  </script>
+</body>
+
+</html>
